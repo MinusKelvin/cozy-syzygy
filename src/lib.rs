@@ -26,8 +26,8 @@ impl std::ops::Neg for Wdl {
             Wdl::Loss => Wdl::Win,
             Wdl::BlessedLoss => Wdl::CursedWin,
             Wdl::Draw => Wdl::Draw,
-            Wdl::CursedWin => Wdl::CursedWin,
-            Wdl::Win => Wdl::Win,
+            Wdl::CursedWin => Wdl::BlessedLoss,
+            Wdl::Win => Wdl::Loss,
         }
     }
 }

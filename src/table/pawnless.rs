@@ -6,6 +6,8 @@ use crate::constants::{
 use crate::pairs::PairsData;
 use crate::{ColoredPiece, DataStream, Material, Wdl, MAX_PIECES};
 
+use super::subfactor;
+
 pub struct WdlTable<'data> {
     men: usize,
     encoding_type: EncodingType,
@@ -313,15 +315,4 @@ fn calculate_factors(
     }
 
     (f, factors)
-}
-
-fn subfactor(k: usize, n: usize) -> usize {
-    let mut f = n;
-    let mut l = 1;
-    for i in 1..k {
-        f *= n - i;
-        l *= i + 1;
-    }
-
-    f / l
 }

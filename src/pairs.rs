@@ -14,7 +14,7 @@ pub struct PairsData<'data> {
     pub data: &'data [u8],
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Copy, Clone)]
 pub struct Sizes {
     pub index_table_size: usize,
     pub size_table_size: usize,

@@ -5,9 +5,10 @@ use cozy_chess::{Board, Color, Piece};
 use memmap::Mmap;
 use ouroboros::self_referencing;
 
-use crate::{ColoredPiece, Material, Wdl, DataStream};
+use crate::{Material, Wdl, DataStream};
 
 mod pawnless;
+mod pawnful;
 
 #[self_referencing]
 pub struct WdlTable {
@@ -19,7 +20,7 @@ pub struct WdlTable {
 
 enum Variant<'data> {
     Pawnless(pawnless::WdlTable<'data>),
-    Pawnful(),
+    Pawnful(pawnful::WdlTable<'data>),
 }
 
 impl WdlTable {
@@ -40,7 +41,7 @@ impl WdlTable {
             if wpawns + bpawns == 0 {
                 Ok(Variant::Pawnless(pawnless::WdlTable::new(&mut data, material)))
             } else {
-                Err(std::io::Error::from(std::io::ErrorKind::Other))
+                Ok(Variant::Pawnful(pawnful::WdlTable::new(&mut data, material)))
             }
         })
     }
@@ -48,7 +49,18 @@ impl WdlTable {
     pub(super) fn read(&self, pos: &Board, color_flip: bool) -> Wdl {
         match self.borrow_variant() {
             Variant::Pawnless(table) => table.read(pos, color_flip),
-            Variant::Pawnful() => todo!(),
+            Variant::Pawnful(table) => table.read(pos, color_flip),
         }
     }
+}
+
+fn subfactor(k: usize, n: usize) -> usize {
+    let mut f = n;
+    let mut l = 1;
+    for i in 1..k {
+        f *= n - i;
+        l *= i + 1;
+    }
+
+    f / l
 }

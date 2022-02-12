@@ -121,10 +121,10 @@ impl Tablebase {
         // en passant, in which case the lower bound is a loss. Additionally, since we need to know
         // if the best move is a capture when it is better than a draw, it is simpler to initialize
         // alpha to draw even if the tablebase WDL is better than a draw.
-        let mut alpha = if num_moves_without_ep == 0 && !captures.is_empty() {
-            Wdl::Loss
-        } else {
-            Wdl::Draw.min(v)
+        let false_stalemate = num_moves_without_ep == 0 && !captures.is_empty();
+        let mut alpha = match false_stalemate {
+            true => Wdl::Loss,
+            false => Wdl::Draw.min(v),
         };
 
         let mut best_is_ep = false;
@@ -143,10 +143,10 @@ impl Tablebase {
             }
         }
 
-        if v > alpha {
+        if !false_stalemate && v > alpha {
             Some((v, false))
         } else {
-            Some((alpha, best_is_capture || best_is_ep))
+            Some((alpha, best_is_capture || best_is_ep || false_stalemate))
         }
     }
 
