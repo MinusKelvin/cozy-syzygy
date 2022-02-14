@@ -60,5 +60,12 @@ fn main() {
     check_pos("5K2/8/5k2/8/pP6/B7/8/8 b - b3 0 1", Wdl::Draw, true);
     check_pos("5K2/8/5k2/8/pP6/B7/8/8 b - - 0 1", Wdl::Loss, false);
 
+    println!();
+    println!("Testing some positions that have caused panics");
+    check_pos("8/8/5p2/5k2/8/4K3/6Qp/8 w - - 0 78", Wdl::Win, true);
+    check_pos("6k1/KPr1P3/8/8/8/8/8/8 b - - 0 69", Wdl::Draw, false);
+    check_pos("8/2k5/4p3/5p2/3K4/8/7p/8 b - - 0 68", Wdl::Win, false);
+    check_pos("8/8/3k4/4p3/8/8/6p1/1K4B1 w - - 0 57", Wdl::Draw, false);
+
     println!("{tests} tests, {fails} fails");
 }

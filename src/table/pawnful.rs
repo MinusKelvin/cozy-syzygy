@@ -212,7 +212,7 @@ impl Table<'_> {
         }
 
         for i in 1..white_pawns {
-            for j in i + 1..black_pawns {
+            for j in i + 1..white_pawns {
                 if PAWN_TWIST[piece_squares[i] as usize] < PAWN_TWIST[piece_squares[j] as usize] {
                     piece_squares.swap(i, j);
                 }
@@ -221,8 +221,8 @@ impl Table<'_> {
 
         let t = white_pawns - 1;
         let mut index = PAWN_INDEX[t][FLAP[piece_squares[0] as usize] as usize] as u64;
-        for i in (0..t).rev() {
-            index += BINOMIAL[t - 1][PAWN_TWIST[piece_squares[i] as usize] as usize] as u64;
+        for i in (1..=t).rev() {
+            index += BINOMIAL[t - i][PAWN_TWIST[piece_squares[i] as usize] as usize] as u64;
         }
         index *= self.factors[0] as u64;
 
