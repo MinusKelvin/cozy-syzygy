@@ -8,12 +8,14 @@ use crate::table::WdlTable;
 use crate::{Data, Material, Wdl, MAX_PIECES};
 
 pub struct Tablebase {
+    max_pieces: u32,
     wdl: HashMap<Material, WdlTable>,
 }
 
 impl Tablebase {
     pub fn new() -> Tablebase {
         Tablebase {
+            max_pieces: 2,
             wdl: HashMap::new(),
         }
     }
@@ -54,6 +56,7 @@ impl Tablebase {
             let mmap = unsafe { memmap::Mmap::map(&file)? };
 
             entry.insert(WdlTable::load(Data::File(mmap), material)?);
+            self.max_pieces = self.max_pieces.max(material.count() as u32);
         }
 
         Ok(())
@@ -70,7 +73,13 @@ impl Tablebase {
 
         if let Entry::Vacant(entry) = self.wdl.entry(material) {
             entry.insert(WdlTable::load(Data::Bytes(bytes), material).expect("Invalid data"));
+            self.max_pieces = self.max_pieces.max(material.count() as u32);
         }
+    }
+
+    /// Returns the largest number of pieces that the tablebase might have an answer for
+    pub fn max_pieces(&self) -> u32 {
+        self.max_pieces
     }
 
     /// Find the WDL value of the specified board, and whether the best move is a capture or
