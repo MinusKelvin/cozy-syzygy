@@ -1,87 +1,76 @@
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::path::Path;
 
 use cozy_chess::{BitBoard, Board, Color, Piece, Rank, Square};
 
 use crate::table::WdlTable;
-use crate::{Material, Wdl, MAX_PIECES};
+use crate::{Data, Material, Wdl, MAX_PIECES};
 
 pub struct Tablebase {
-    min_pieces: usize,
-    max_pieces: usize,
     wdl: HashMap<Material, WdlTable>,
-    // dtz: HashMap<Material, DtzTable>,
 }
 
 impl Tablebase {
-    pub fn new(tb_path: impl AsRef<Path>) -> Tablebase {
-        let tb_path = tb_path.as_ref();
-        let mut wdl = HashMap::new();
-        // let mut dtz = HashMap::new();
-
-        let mut has_all = [true; MAX_PIECES];
-        let mut max_pieces = 2;
-        let mut load = |m: Material| {
-            use std::collections::hash_map::Entry;
-            let entry = match wdl.entry(m) {
-                Entry::Occupied(_) => return false,
-                Entry::Vacant(e) => e,
-            };
-            let path = tb_path.join(format!("{}.rtbw", m));
-            match WdlTable::load(&path, m) {
-                Ok(table) => {
-                    max_pieces = max_pieces.max(m.count() as usize);
-                    entry.insert(table);
-                    // if let Some(table) = DtzTable::new(&path) {
-                    //     dtz.insert(m, table);
-                    // }
-                    true
-                }
-                Err(_) => {
-                    has_all[m.count() as usize - 1] = false;
-                    false
-                }
-            }
-        };
-
-        let mut material_queue = vec![Material::default()];
-        while let Some(old_material) = material_queue.pop() {
-            for p in Piece::ALL {
-                if p == Piece::King {
-                    continue;
-                }
-
-                for c in Color::ALL {
-                    let mut material = old_material;
-                    material[(c, p)] += 1;
-                    if !material.is_canonical() {
-                        continue;
-                    }
-                    if !load(material) {
-                        continue;
-                    }
-                    if material.count() as usize != MAX_PIECES {
-                        material_queue.push(material);
-                    }
-                }
-            }
-        }
+    pub fn new() -> Tablebase {
         Tablebase {
-            wdl,
-            max_pieces,
-            min_pieces: has_all.iter().take_while(|&&has_all| has_all).count(),
-            // dtz,
+            wdl: HashMap::new(),
         }
     }
 
-    /// Returns the largest number of pieces that this tablebase could have an answer for.
-    pub fn max_pieces(&self) -> usize {
-        self.max_pieces
+    pub fn add_directory(&mut self, dir: impl AsRef<Path>) -> std::io::Result<()> {
+        for f in std::fs::read_dir(dir)? {
+            let f = f?;
+            if !f.file_type()?.is_file() {
+                continue;
+            }
+            let path = f.path();
+            if path.extension().and_then(|s| s.to_str()) != Some("rtbw") {
+                continue;
+            }
+            self.load_file(path)?;
+        }
+        Ok(())
     }
 
-    /// Returns the largest number of pieces this tablebase is guarenteed to have an answer for.
-    pub fn min_pieces(&self) -> usize {
-        self.min_pieces
+    pub fn load_file(&mut self, file: impl AsRef<Path>) -> std::io::Result<()> {
+        let path = file.as_ref();
+
+        let material: Material = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or(std::io::Error::from(std::io::ErrorKind::Other))?
+            .parse()
+            .unwrap();
+
+        assert!(
+            material.count() as usize <= MAX_PIECES,
+            "Cannot load tablebase for positions with more than {} pieces",
+            MAX_PIECES
+        );
+
+        if let Entry::Vacant(entry) = self.wdl.entry(material) {
+            let file = std::fs::File::open(path)?;
+            let mmap = unsafe { memmap::Mmap::map(&file)? };
+
+            entry.insert(WdlTable::load(Data::File(mmap), material)?);
+        }
+
+        Ok(())
+    }
+
+    pub fn load_bytes(&mut self, material: &str, bytes: &'static [u8]) {
+        let material: Material = material.parse().unwrap();
+
+        assert!(
+            material.count() as usize <= MAX_PIECES,
+            "Cannot load tablebase for positions with more than {} pieces",
+            MAX_PIECES
+        );
+
+        if let Entry::Vacant(entry) = self.wdl.entry(material) {
+            entry.insert(WdlTable::load(Data::Bytes(bytes), material).expect("Invalid data"));
+        }
     }
 
     /// Find the WDL value of the specified board, and whether the best move is a capture or

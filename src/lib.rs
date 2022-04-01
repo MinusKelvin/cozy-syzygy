@@ -1,12 +1,13 @@
 use cozy_chess::{Color, Piece};
 
 mod constants;
+mod pairs;
 mod table;
 mod tablebase;
-mod pairs;
 
 const MAX_PIECES: usize = 8;
 
+use memmap::Mmap;
 pub use tablebase::Tablebase;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -53,13 +54,13 @@ impl Material {
         let black = self.0[1].iter().sum();
         match white.cmp(&black) {
             std::cmp::Ordering::Greater => return true,
-            std::cmp::Ordering::Equal => {},
+            std::cmp::Ordering::Equal => {}
             std::cmp::Ordering::Less => return false,
         }
         for p in CANONICAL_PIECE_ORDER {
             match self[(Color::White, p)].cmp(&self[(Color::Black, p)]) {
                 std::cmp::Ordering::Greater => return true,
-                std::cmp::Ordering::Equal => {},
+                std::cmp::Ordering::Equal => {}
                 std::cmp::Ordering::Less => return false,
             }
         }
@@ -107,6 +108,33 @@ impl std::fmt::Display for Material {
     }
 }
 
+impl std::str::FromStr for Material {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut chars = s.chars();
+        let index = |c| match c {
+            'Q' => Some(Piece::Queen as usize),
+            'R' => Some(Piece::Rook as usize),
+            'B' => Some(Piece::Bishop as usize),
+            'N' => Some(Piece::Knight as usize),
+            'P' => Some(Piece::Pawn as usize),
+            _ => None,
+        };
+
+        let mut white_counts = [0; 5];
+        (&mut chars)
+            .take_while(|&c| c != 'v')
+            .filter_map(index)
+            .for_each(|c| white_counts[c] += 1);
+
+        let mut black_counts = [0; 5];
+        chars.filter_map(index).for_each(|c| black_counts[c] += 1);
+
+        Ok(Material([white_counts, black_counts]))
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum ColoredPiece {
     WhitePawn = 1,
@@ -150,7 +178,7 @@ impl ColoredPiece {
             4 => Piece::Rook,
             5 => Piece::Queen,
             6 => Piece::King,
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 
@@ -171,7 +199,7 @@ impl<'a> DataStream<'a> {
     fn new(data: &'a [u8]) -> Self {
         DataStream {
             read_so_far: 0,
-            data
+            data,
         }
     }
 
@@ -199,5 +227,19 @@ impl<'a> DataStream<'a> {
         self.data = r;
         self.read_so_far += size;
         a
+    }
+}
+
+enum Data {
+    Bytes(&'static [u8]),
+    File(Mmap),
+}
+
+impl AsRef<[u8]> for Data {
+    fn as_ref(&self) -> &[u8] {
+        match self {
+            Data::Bytes(b) => b,
+            Data::File(f) => f,
+        }
     }
 }

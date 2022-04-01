@@ -1,14 +1,10 @@
 use cozy_syzygy::{Tablebase, Wdl};
 
 fn main() {
-    let syzygy_path = std::env::args_os().nth(1).unwrap_or_else(|| {
-        eprintln!("First argument should be the path to the Syzygy tablebase files");
-        std::process::exit(1)
-    });
-
-    let tb = Tablebase::new(syzygy_path);
-    println!("Always have answers for up to {} men", tb.min_pieces());
-    println!("Might have answers for up to {} men", tb.max_pieces());
+    let mut tb = Tablebase::new();
+    for path in std::env::args_os().skip(1) {
+        let _ = tb.add_directory(path);
+    }
 
     let mut fails = 0;
     let mut tests = 0;
