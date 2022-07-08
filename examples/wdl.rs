@@ -62,6 +62,7 @@ fn main() {
     check_pos("6k1/KPr1P3/8/8/8/8/8/8 b - - 0 69", Wdl::Draw, false);
     check_pos("8/2k5/4p3/5p2/3K4/8/7p/8 b - - 0 68", Wdl::Win, false);
     check_pos("8/8/3k4/4p3/8/8/6p1/1K4B1 w - - 0 57", Wdl::Draw, false);
+    check_pos("RR6/8/8/8/3kn3/8/6K1/8 w - - 16 9", Wdl::Win, false);
 
     println!("{tests} tests, {fails} fails");
 }

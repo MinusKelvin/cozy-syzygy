@@ -172,8 +172,10 @@ impl<'data> PairsData<'data> {
             bitcount += l;
             if bitcount >= 32 {
                 bitcount -= 32;
-                code |= (u32::from_be_bytes(ptr[0..4].try_into().unwrap()) as u64) << bitcount;
-                ptr = &ptr[4..];
+                if !ptr.is_empty() {
+                    code |= (u32::from_be_bytes(ptr[0..4].try_into().unwrap()) as u64) << bitcount;
+                    ptr = &ptr[4..];
+                }
             }
         };
 
