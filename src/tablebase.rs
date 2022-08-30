@@ -191,13 +191,22 @@ impl Tablebase {
     }
 
     fn read_wdl(&self, position: &Board) -> Option<Wdl> {
+        // Tablebases do not include positions with castle rights
+        if position.castle_rights(Color::White).short.is_some()
+            || position.castle_rights(Color::White).long.is_some()
+            || position.castle_rights(Color::Black).short.is_some()
+            || position.castle_rights(Color::Black).long.is_some()
+        {
+            return None;
+        }
+
         let mut material = Material::default();
         for c in Color::ALL {
             for p in Piece::ALL {
                 if p == Piece::King {
                     continue;
                 }
-                material[(c, p)] = (position.pieces(p) & position.colors(c)).popcnt() as u8;
+                material[(c, p)] = (position.pieces(p) & position.colors(c)).len() as u8;
             }
         }
 
