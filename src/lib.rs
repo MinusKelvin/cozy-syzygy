@@ -1,3 +1,5 @@
+//! Syzygy tablebase probing library for `cozy-chess`.
+
 use cozy_chess::{Color, Piece};
 
 mod constants;
@@ -10,12 +12,18 @@ const MAX_PIECES: usize = 8;
 use memmap::Mmap;
 pub use tablebase::Tablebase;
 
+/// 5-valued game outcome
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Wdl {
+    /// The game is lost.
     Loss,
+    /// The game would be lost, but is drawn by the 50 move rule.
     BlessedLoss,
+    /// The game is drawn.
     Draw,
+    /// The game would be won, but is drawn by the 50 move rule.
     CursedWin,
+    /// The game is won.
     Win,
 }
 
@@ -29,6 +37,42 @@ impl std::ops::Neg for Wdl {
             Wdl::Draw => Wdl::Draw,
             Wdl::CursedWin => Wdl::BlessedLoss,
             Wdl::Win => Wdl::Loss,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum SyzygyError {
+    NotSyzygy,
+    UnknownMaterial,
+    Io(std::io::Error),
+}
+
+impl From<std::io::Error> for SyzygyError {
+    fn from(e: std::io::Error) -> Self {
+        SyzygyError::Io(e)
+    }
+}
+
+impl std::fmt::Display for SyzygyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SyzygyError::NotSyzygy => {
+                write!(f, "the data does not appear to be in the Syzygy format")
+            }
+            SyzygyError::UnknownMaterial => {
+                write!(f, "the material could not be determined")
+            }
+            SyzygyError::Io(e) => write!(f, "{}", e),
+        }
+    }
+}
+
+impl std::error::Error for SyzygyError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            SyzygyError::Io(e) => Some(e),
+            _ => None,
         }
     }
 }
@@ -109,27 +153,36 @@ impl std::fmt::Display for Material {
 }
 
 impl std::str::FromStr for Material {
-    type Err = std::convert::Infallible;
+    type Err = SyzygyError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut chars = s.chars();
         let index = |c| match c {
-            'Q' => Some(Piece::Queen as usize),
-            'R' => Some(Piece::Rook as usize),
-            'B' => Some(Piece::Bishop as usize),
-            'N' => Some(Piece::Knight as usize),
-            'P' => Some(Piece::Pawn as usize),
-            _ => None,
+            'Q' => Some(Ok(Piece::Queen as usize)),
+            'R' => Some(Ok(Piece::Rook as usize)),
+            'B' => Some(Ok(Piece::Bishop as usize)),
+            'N' => Some(Ok(Piece::Knight as usize)),
+            'P' => Some(Ok(Piece::Pawn as usize)),
+            'K' => None,
+            _ => Some(Err(SyzygyError::UnknownMaterial)),
         };
 
         let mut white_counts = [0; 5];
         (&mut chars)
             .take_while(|&c| c != 'v')
             .filter_map(index)
-            .for_each(|c| white_counts[c] += 1);
+            .try_for_each(|c| -> Result<_, SyzygyError> {
+                white_counts[c?] += 1;
+                Ok(())
+            })?;
 
         let mut black_counts = [0; 5];
-        chars.filter_map(index).for_each(|c| black_counts[c] += 1);
+        chars
+            .filter_map(index)
+            .try_for_each(|c| -> Result<_, SyzygyError> {
+                black_counts[c?] += 1;
+                Ok(())
+            })?;
 
         Ok(Material([white_counts, black_counts]))
     }
@@ -231,14 +284,16 @@ impl<'a> DataStream<'a> {
 }
 
 enum Data {
-    Bytes(&'static [u8]),
+    StaticBytes(&'static [u8]),
+    OwnedBytes(Box<[u8]>),
     File(Mmap),
 }
 
 impl AsRef<[u8]> for Data {
     fn as_ref(&self) -> &[u8] {
         match self {
-            Data::Bytes(b) => b,
+            Data::StaticBytes(b) => b,
+            Data::OwnedBytes(b) => b,
             Data::File(f) => f,
         }
     }

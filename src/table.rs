@@ -1,12 +1,10 @@
-use std::io::Result;
-
 use cozy_chess::{Board, Color, Piece};
 use ouroboros::self_referencing;
 
-use crate::{Material, Wdl, DataStream, Data};
+use crate::{Data, DataStream, Material, SyzygyError, Wdl};
 
-mod pawnless;
 mod pawnful;
+mod pawnless;
 
 #[self_referencing]
 pub struct WdlTable {
@@ -22,21 +20,25 @@ enum Variant<'data> {
 }
 
 impl WdlTable {
-    pub(super) fn load(data: Data, material: Material) -> Result<Self> {
+    pub(super) fn load(data: Data, material: Material) -> Result<Self, SyzygyError> {
         WdlTable::try_new(data, |data| {
             let mut data = DataStream::new(data.as_ref());
-    
+
             if data.read_u32() != 0x5d23e871 {
-                return Err(std::io::Error::from(std::io::ErrorKind::Other));
+                return Err(SyzygyError::NotSyzygy);
             }
-    
+
             let wpawns = material[(Color::White, Piece::Pawn)];
             let bpawns = material[(Color::Black, Piece::Pawn)];
-    
+
             if wpawns + bpawns == 0 {
-                Ok(Variant::Pawnless(pawnless::WdlTable::new(&mut data, material)))
+                Ok(Variant::Pawnless(pawnless::WdlTable::new(
+                    &mut data, material,
+                )))
             } else {
-                Ok(Variant::Pawnful(pawnful::WdlTable::new(&mut data, material)))
+                Ok(Variant::Pawnful(pawnful::WdlTable::new(
+                    &mut data, material,
+                )))
             }
         })
     }

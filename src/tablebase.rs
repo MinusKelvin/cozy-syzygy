@@ -5,8 +5,9 @@ use std::path::Path;
 use cozy_chess::{BitBoard, Board, Color, Piece, Rank, Square};
 
 use crate::table::WdlTable;
-use crate::{Data, Material, Wdl, MAX_PIECES};
+use crate::{Data, Material, SyzygyError, Wdl, MAX_PIECES};
 
+/// A collection of tablebase files that can be probed.
 pub struct Tablebase {
     max_pieces: u32,
     wdl: HashMap<Material, WdlTable>,
@@ -20,7 +21,11 @@ impl Tablebase {
         }
     }
 
-    pub fn add_directory(&mut self, dir: impl AsRef<Path>) -> std::io::Result<()> {
+    /// Load all of the Syzygy tablebase files in the specified directory.
+    ///
+    /// Syzygy tablebase files have the extension `rtbw` for WDL data and `rtbz` for DTZ data. See
+    /// [`Tablebase::load_file`][Tablebase::load_file] for more information.
+    pub fn add_directory(&mut self, dir: impl AsRef<Path>) -> Result<(), SyzygyError> {
         for f in std::fs::read_dir(dir)? {
             let f = f?;
             if !f.file_type()?.is_file() {
@@ -35,15 +40,41 @@ impl Tablebase {
         Ok(())
     }
 
-    pub fn load_file(&mut self, file: impl AsRef<Path>) -> std::io::Result<()> {
+    /// Load a Syzygy tablebase file from the file system.
+    ///
+    /// The non-extension part of the filename is used to determine the material of the tablebase
+    /// file, which is information not contained within the Syzygy tablebase file format. It must
+    /// be in the standard `K#vK#` format, where `#` is any number of piece characters. If this is
+    /// not correct for the file contents, using it may result in panics or incorrect results.
+    ///
+    /// This memory-maps the file.
+    pub fn load_file(&mut self, file: impl AsRef<Path>) -> Result<(), SyzygyError> {
         let path = file.as_ref();
 
-        let material: Material = path
+        let material = path
             .file_stem()
             .and_then(|s| s.to_str())
-            .ok_or(std::io::Error::from(std::io::ErrorKind::Other))?
-            .parse()
-            .unwrap();
+            .ok_or(SyzygyError::UnknownMaterial)?;
+
+        self.load_file_with_material(material, path)
+    }
+
+    /// Load a Syzygy tablebase file from the file system.
+    ///
+    /// The non-extension part of the filename is used to determine the material of the tablebase
+    /// file, which is information not contained within the Syzygy tablebase file format. It must
+    /// be in the standard `K#vK#` format, where `#` is any number of piece characters. If this is
+    /// not correct for the file contents, using it may result in panics or incorrect results.
+    ///
+    /// This memory-maps the file.
+    pub fn load_file_with_material(
+        &mut self,
+        material: &str,
+        file: impl AsRef<Path>,
+    ) -> Result<(), SyzygyError> {
+        let path = file.as_ref();
+
+        let material: Material = material.parse()?;
 
         assert!(
             material.count() as usize <= MAX_PIECES,
@@ -62,8 +93,17 @@ impl Tablebase {
         Ok(())
     }
 
-    pub fn load_bytes(&mut self, material: &str, bytes: &'static [u8]) {
-        let material: Material = material.parse().unwrap();
+    /// Load a Syzygy tablebase file from static memory.
+    ///
+    /// The material string must be in the standard `K#vK#` format, where `#` is any number of
+    /// piece characters. If this is not correct for the file contents, using it may result in
+    /// panics or incorrect results.
+    pub fn load_bytes_static(
+        &mut self,
+        material: &str,
+        bytes: &'static [u8],
+    ) -> Result<(), SyzygyError> {
+        let material: Material = material.parse()?;
 
         assert!(
             material.count() as usize <= MAX_PIECES,
@@ -72,18 +112,48 @@ impl Tablebase {
         );
 
         if let Entry::Vacant(entry) = self.wdl.entry(material) {
-            entry.insert(WdlTable::load(Data::Bytes(bytes), material).expect("Invalid data"));
+            entry.insert(WdlTable::load(Data::StaticBytes(bytes), material)?);
             self.max_pieces = self.max_pieces.max(material.count() as u32);
         }
+        Ok(())
     }
 
-    /// Returns the largest number of pieces that the tablebase might have an answer for
+    /// Load a Syzygy tablebase file from owned memory.
+    ///
+    /// The material string must be in the standard `K#vK#` format, where `#` is any number of
+    /// piece characters. If this is not correct for the file contents, using it may result in
+    /// panics or incorrect results.
+    pub fn load_bytes_owned(
+        &mut self,
+        material: &str,
+        bytes: Box<[u8]>,
+    ) -> Result<(), SyzygyError> {
+        let material: Material = material.parse()?;
+
+        assert!(
+            material.count() as usize <= MAX_PIECES,
+            "Cannot load tablebase for positions with more than {} pieces",
+            MAX_PIECES
+        );
+
+        if let Entry::Vacant(entry) = self.wdl.entry(material) {
+            entry.insert(WdlTable::load(Data::OwnedBytes(bytes), material)?);
+            self.max_pieces = self.max_pieces.max(material.count() as u32);
+        }
+        Ok(())
+    }
+
+    /// Returns the number of pieces in the largest Syzygy tablebase file that has been loaded.
     pub fn max_pieces(&self) -> u32 {
         self.max_pieces
     }
 
-    /// Find the WDL value of the specified board, and whether the best move is a capture or
+    /// Find the WDL value of the specified position, and whether the best move is a capture or
     /// en passant capture.
+    ///
+    /// Note that due to the way Syzygy tablebases work, the Syzygy tablebase files for subsets
+    /// of the material in the specified position may also need to be loaded in order for this
+    /// function to return a result.
     pub fn probe_wdl(&self, position: &Board) -> Option<(Wdl, bool)> {
         let v = self.read_wdl(position)?;
 
