@@ -9,6 +9,3 @@ edition = "2021"
 cozy-chess = "0.3"
 memmap = "0.7.0"
 ouroboros = "0.14.0"
-
-[patch.crates-io]
-cozy-chess = { git = "https://github.com/analog-hors/cozy-chess" }
